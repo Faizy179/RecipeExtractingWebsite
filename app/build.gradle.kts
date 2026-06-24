@@ -8,6 +8,8 @@
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     application
+    //spring boot plugins to use it for our website
+    id("org.springframework.boot") version "3.2.2"
 }
 
 repositories {
@@ -24,9 +26,6 @@ dependencies {
     // This dependency is used by the application.
     implementation(libs.guava)
 
-    //used for server integration
-    implementation("io.javalin:javalin:7.2.2")
-
     //used for web scraping
     implementation("org.jsoup:jsoup:1.17.2")
 
@@ -35,6 +34,11 @@ dependencies {
 
     //web emulator
     implementation("org.seleniumhq.selenium:selenium-java:4.22.0")
+
+    //using for server integration
+    implementation("org.springframework.boot:spring-boot-starter-web")
+
+    implementation(platform("org.springframework.boot:spring-boot-dependencies:3.2.2"))
 }
 
 // Apply a specific Java toolchain to ease working on different environments.

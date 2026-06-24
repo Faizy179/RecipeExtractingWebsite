@@ -6,8 +6,6 @@ import org.jsoup.select.Elements;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
-import org.openqa.selenium.support.PageFactoryFinder;
-
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -16,14 +14,14 @@ import java.io.IOException;
 public class recipeExtractor {
     final static int MAX_RETRIES = 3;
     public static void main(String[] args) {
-        String url = "https://www.seriouseats.com/best-nanaimo-bars-recipe-8671193";
+        String url = "https://joyfoodsunshine.com/the-most-amazing-chocolate-chip-cookies/";
 
         Document document = scrape(url);
 
         if(document != null){                                              
             JsonObject data = extractRecipe(document);
             if(data != null){
-                System.out.println(data);
+                System.out.println(data);//print the toString of the data object
             }
             else{
                 System.out.println("Could not find recipe data on page");

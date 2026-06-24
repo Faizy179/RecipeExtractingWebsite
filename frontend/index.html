@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frictionless Recipe Extractor</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; background-color:#9c6f44;}
+        .search-container { display: flex; gap: 10px; margin-bottom: 30px; }
+        input { flex: 1; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 10px 20px; font-size: 16px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:disabled { background-color: #6c757d; }
+        #loading { display: none; color: #555; font-style: italic; }
+        #recipe-display { margin-top: 20px; }
+        ul, ol { padding-left: 20px; }
+        li { margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+<center>
+<h1>
+
+    Declutter Any Recipe
+</h1>
+<div class = "search-container">
+    <input type = "text"  id = "url-input"  placeholder="https://myFavoriteRecipe.com/amazingRecipe">
+    <button  id = "extractButton" onclick = "fetchRecipe()" > 
+        Extract!
+    </button>
+</div>
+<div id = "loading" style = "display:none">
+    Loading recipe.... please wait
+</div>
+<div id = "recipe-display">
+    
+</div>
+</center>
+</body>
+<script> 
+    async function fetchRecipe(){
+        const userInput = document.getElementById("url-input").value.trim();
+        const loadingDiv = document.getElementById("loading");
+        const displayDiv = document.getElementById("recipe-display");
+        const button = document.getElementById("extractButton");
+        if(!userInput){
+            alert("Please paste a valid url");
+        }
+        else if(!userInput.startsWith("https")){
+            alert("Please ensure url begins with http");
+        }
+        else{
+            loadingDiv.style.display = "block";
+            displayDiv.innerHTML = "";
+            button.disabled = true;
+            try{
+                const response = await fetch (`http://localhost:8080/api/extract?url=${encodeURIComponent(userInput)}`);
+                const data = await response.json();
+                if(data.error){
+                    displayDiv.innerHTML = `<p style = "color: red;"> FatelError</p>`;
+                }
+                else{
+                    displayDiv.innerHTML = ` 
+                        <h2>${data.name}</h2>
+                        <h3>Ingredients</h3>
+                        <ul>
+                            ${data.ingredients.map(ing => `<li>${ing}</li>`).join('')}
+                        </ul>
+                        <h3>Instructions</h3>
+                        <ol>
+                            ${data.instructions.map(step => `<li>${step}</li>`).join('')}
+                        </ol> `
+                }
+            }
+            catch(error){
+                displayDiv.innerHTML = `<p style = "color: red;"> FatelError</p>`;
+                console.log("Error while fetching recipe");
+            }
+            finally{
+                loadingDiv.style.display = "none"
+                button.disabled = false;
+            }
+        }
+    }
+</script>
+</html>
