@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Frictionless Recipe Extractor</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; background-color:#ffffff;}
+        body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; background-color:#ffffff;}
         .search-container { display: flex; gap: 10px; margin-bottom: 30px; }
         input { flex: 1; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
         button { padding: 10px 20px; font-size: 16px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
@@ -117,7 +117,7 @@
             }
             catch(error){
                 displayDiv.style.display = "block";
-                displayDiv.innerHTML = `<p style = "color: red;"> Fatal Error</p>`;
+                displayDiv.innerHTML = `<p style = "color: red;"> Fatal Error ${error}</p>`;
                 console.log("Error while fetching recipe:", error);
             }
             finally{

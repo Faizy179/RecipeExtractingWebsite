@@ -1,13 +1,17 @@
 package recipeextractor;
+import java.time.Duration;
+
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.openqa.selenium.By;
+import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
-import org.openqa.selenium.Keys;
-import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -30,13 +34,29 @@ public class recipeExtractor {
         driver.get(url);//navigqates to that specific recipe website
         System.out.println("Page Title: " + driver.getTitle());
         System.out.println("Page URL: " + driver.getCurrentUrl());
-        htmlContent = driver.getPageSource();
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        try{
+            wait.until(d -> !d.findElements(By.cssSelector("script[type = 'application/ld+json']")).isEmpty());
+        }
+        catch(TimeoutException a){
+            System.out.println("No JSON-LD found after waiting");
+        }
+        
 
+        htmlContent = driver.getPageSource();
+        int index = htmlContent.indexOf("recipeIngredient");
+
+        if (index != -1) {
+            int start = Math.max(0, index - 500);
+            int end = Math.min(htmlContent.length(), index + 1500);
+            System.out.println(htmlContent.substring(start, end));
+        }
         return Jsoup.parse(htmlContent);
 
        }
        catch(Exception e){
         System.out.println("Scraping failed");
+        e.printStackTrace();
         return null;
        } 
        finally{
@@ -48,6 +68,8 @@ public class recipeExtractor {
     public static JsonObject extractRecipe(Document document){
 
         Elements jsonElements = document.select("script[type=application/ld+json]");
+
+         System.out.println("Found " + jsonElements.size() + " JSON-LD scripts");
         for (Element jsonElement : jsonElements){
             String rawJson = jsonElement.data().trim();
             try{
@@ -75,7 +97,26 @@ public class recipeExtractor {
                 System.out.println("ERROR PARSING JSON: " + e.getMessage());
             }
         }
-        return null;
+        return extractMicrodata(document);
+    }
+    public static JsonObject extractMicrodata(Document document){
+        JsonObject data = new JsonObject();
+        String recipeName = document.title();
+        JsonArray ingredients = new JsonArray();
+        JsonArray instructions = new JsonArray();
+        for (Element ingredient : document.select("[itemprop=recipeIngredient]")){
+            ingredients.add(ingredient.text());
+        }
+        if(ingredients.isEmpty()){
+            return null;
+        }
+        for(Element instruction : document.select("[itemprop=recipeInstructions]")){
+            instructions.add(instruction.text());
+        }
+        data.addProperty("name", recipeName);
+        data.add("ingredients",ingredients);
+        data.add("instructions",instructions);
+        return data;
     }
     public static JsonArray extractIngredients(JsonObject recipe){
         JsonArray ingredientsList = new JsonArray();
@@ -151,8 +192,7 @@ public class recipeExtractor {
                         }
                     }
                 }
-            }
-           
+            }      
         }
         return null;
     }
