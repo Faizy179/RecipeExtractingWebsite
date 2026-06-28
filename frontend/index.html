@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Frictionless Recipe Extractor</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; background-color:#9c6f44;}
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; background-color:#ffffff;}
         .search-container { display: flex; gap: 10px; margin-bottom: 30px; }
         input { flex: 1; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
         button { padding: 10px 20px; font-size: 16px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
@@ -14,29 +14,66 @@
         #recipe-display { margin-top: 20px; }
         ul, ol { padding-left: 20px; }
         li { margin-bottom: 8px; }
+        .completed-step{
+            text-decoration: line-through;
+            color: #999;
+            transition: 0.3s;
+        }
+        .instruction-item{
+            cursor: pointer;
+        }
     </style>
 </head>
-<body>
+<body onkeypress="enterRecipe(event)">
 <center>
-<h1>
+<h1 style="color: #6f4827;">
 
     Declutter Any Recipe
 </h1>
 <div class = "search-container">
-    <input type = "text"  id = "url-input"  placeholder="https://myFavoriteRecipe.com/amazingRecipe">
+    <input type = "text"  id = "url-input"  placeholder="https://myFavoriteRecipe.com/amazingRecipe" onkeypress="enterRecipe(event)">
     <button  id = "extractButton" onclick = "fetchRecipe()" > 
         Extract!
     </button>
 </div>
+</center>
 <div id = "loading" style = "display:none">
     Loading recipe.... please wait
 </div>
-<div id = "recipe-display">
+<div id = "recipe-display" >
     
 </div>
-</center>
+<div style = "margin-bottom: 20px;"> 
+    <input type = "checkbox" id = "wake" onchange = "toggleWakeLock()">
+    <label for = "wake" style = "color : rgb(31, 68, 93)"> Keep screen Awake (Don't let my phone sleep!)</label>
+
+</div>
 </body>
-<script> 
+<script>
+    let wake = null;
+    async function enterRecipe(event){
+        if(event.key == 'Enter'){
+            fetchRecipe();
+        }
+    }
+    async function toggleWakeLock() {
+        const checkbox = document.getElementById("wake");
+        if(checkbox.checked){
+            try{
+                wake = await navigator.wakeLock.request('screen');
+            }
+            catch(err){
+                alert("Locking your screen is not supported by your current browser");
+                checkbox.checked  = false;
+            }
+        }
+        else{
+            if(wake !== null){
+                wake.release();
+                wake = null;
+            }
+        }
+    }
     async function fetchRecipe(){
         const userInput = document.getElementById("url-input").value.trim();
         const loadingDiv = document.getElementById("loading");
@@ -53,27 +90,35 @@
             displayDiv.innerHTML = "";
             button.disabled = true;
             try{
-                const response = await fetch (`http://localhost:8080/api/extract?url=${encodeURIComponent(userInput)}`);
+                const response = await fetch (`https://admin1.hackclub.app/api/extract?url=${encodeURIComponent(userInput)}`);
                 const data = await response.json();
-                if(data.error){
-                    displayDiv.innerHTML = `<p style = "color: red;"> FatelError</p>`;
+               displayDiv.style.display = "block"; 
+               if(data.error){
+                    displayDiv.innerHTML = `<p style = "color: red;"> Fatal Error: ${data.error}</p>`;
                 }
                 else{
+                    const instructionsHtml = (data.instructions || []).map(step => `<li class="instruction-item" onclick="this.classList.toggle('completed-step')">${step}</li>`).join('');
+                    const ingredientsHtml = (data.ingredients || []).map(ing => `<li>${ing}</li>`).join('');
                     displayDiv.innerHTML = ` 
-                        <h2>${data.name}</h2>
+                        <h2 style = "color: #6f4827">${data.name}</h2>
                         <h3>Ingredients</h3>
                         <ul>
-                            ${data.ingredients.map(ing => `<li>${ing}</li>`).join('')}
+                            ${ingredientsHtml}
                         </ul>
                         <h3>Instructions</h3>
                         <ol>
-                            ${data.instructions.map(step => `<li>${step}</li>`).join('')}
-                        </ol> `
+                            ${instructionsHtml}
+                        </ol> 
+                        <p style = "color:#28a745;">
+                            Click on Instruction to mark as finished
+                        </p>
+                    `;
                 }
             }
             catch(error){
-                displayDiv.innerHTML = `<p style = "color: red;"> Fatel Error</p>`;
-                console.log("Error while fetching recipe");
+                displayDiv.style.display = "block";
+                displayDiv.innerHTML = `<p style = "color: red;"> Fatal Error</p>`;
+                console.log("Error while fetching recipe:", error);
             }
             finally{
                 loadingDiv.style.display = "none"

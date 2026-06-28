@@ -6,31 +6,15 @@ import org.jsoup.select.Elements;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.Keys;
+import org.openqa.selenium.interactions.Actions;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.google.gson.JsonElement;
-import java.io.IOException;
 public class recipeExtractor {
     final static int MAX_RETRIES = 3;
-    public static void main(String[] args) {
-        String url = "https://joyfoodsunshine.com/the-most-amazing-chocolate-chip-cookies/";
 
-        Document document = scrape(url);
-
-        if(document != null){                                              
-            JsonObject data = extractRecipe(document);
-            if(data != null){
-                System.out.println(data);//print the toString of the data object
-            }
-            else{
-                System.out.println("Could not find recipe data on page");
-            }
-        }
-        else{
-            System.err.println("Failed to extract recipe from  " + url);
-        }
-    }
     public static Document scrape(String url){
         String htmlContent;
        ChromeOptions options = new ChromeOptions();
@@ -38,12 +22,14 @@ public class recipeExtractor {
        options.addArguments("--disable-blink-features=AutomationControlled");
        options.addArguments("--no-sandbox");
        options.addArguments("--disable-dev-shm-usage");
+       options.addArguments("--lang=en-US");
        options.addArguments("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-
-       WebDriver driver = null;
+          WebDriver driver = null;
        try{
         driver = new ChromeDriver(options);
         driver.get(url);//navigqates to that specific recipe website
+        System.out.println("Page Title: " + driver.getTitle());
+        System.out.println("Page URL: " + driver.getCurrentUrl());
         htmlContent = driver.getPageSource();
 
         return Jsoup.parse(htmlContent);
@@ -63,17 +49,17 @@ public class recipeExtractor {
 
         Elements jsonElements = document.select("script[type=application/ld+json]");
         for (Element jsonElement : jsonElements){
-            String rawJson = jsonElement.html().trim();
+            String rawJson = jsonElement.data().trim();
             try{
-                JsonElement parsed = JsonParser.parseString(rawJson);
-                if(JsonParser.parseString(rawJson).isJsonObject()){
-                    JsonObject result = processJsonObject(JsonParser.parseString(rawJson).getAsJsonObject());
+                JsonElement element = JsonParser.parseString(rawJson);
+                if(element.isJsonObject()){
+                    JsonObject result = processJsonObject(element.getAsJsonObject());
                     if(result != null){
                         return result;
                     }
                 }
-                else if(parsed.isJsonArray()){
-                    JsonArray array = parsed.getAsJsonArray();
+                else if(element.isJsonArray()){
+                    JsonArray array = element.getAsJsonArray();
                     final int length = array.size();
                     for(int i = 0; i < length; i++){
                         if (array.get(i).isJsonObject()) {
@@ -86,7 +72,7 @@ public class recipeExtractor {
                 }
             }
             catch(Exception e){
-
+                System.out.println("ERROR PARSING JSON: " + e.getMessage());
             }
         }
         return null;
@@ -95,11 +81,18 @@ public class recipeExtractor {
         JsonArray ingredientsList = new JsonArray();
 
         if(recipe.has("recipeIngredient")){
-            JsonArray ingredients = recipe.getAsJsonArray("recipeIngredient");
-            final int size = ingredients.size();
-            for( int i =0; i < size; i++){
-                ingredientsList.add(ingredients.get(i).getAsString());
+            JsonElement element = recipe.get("recipeIngredient");
+            if(element.isJsonArray()){
+                JsonArray ingredients = recipe.getAsJsonArray("recipeIngredient");
+                final int size = ingredients.size();
+                for( int i =0; i < size; i++){
+                    ingredientsList.add(ingredients.get(i).getAsString());
+                }  
             }
+            else if(element.isJsonPrimitive()){
+                ingredientsList.add(element.getAsString());
+            }
+           
         }
         return ingredientsList;
     }//ectracts the ingredients in the recipe and returns it as a json array
@@ -124,6 +117,12 @@ public class recipeExtractor {
                     }
                 }
             }
+            else if(instructionElement.isJsonObject()){
+                JsonObject obj = instructionElement.getAsJsonObject();
+                if(obj.has("text")){
+                    instructionsList.add(obj.get("text").getAsString());
+                }
+            }
             else if(instructionElement.isJsonPrimitive()){
                 instructionsList.add(instructionElement.getAsString());
             }
@@ -137,17 +136,23 @@ public class recipeExtractor {
             }
         }
         if(object.has("@graph")){
-            JsonArray graphArray = object.getAsJsonArray("@graph");
-            final int length = graphArray.size();
-            for(int i =0; i < length; i++){
-                JsonObject item = graphArray.get(i).getAsJsonObject();
-                if (item.has("@type")) {
-                    if (checkIfRecipeType(item.get("@type"))) {
-                        return buildFrontendPayload(item);
-
+            JsonElement element = object.get("@graph");
+            if(element.isJsonArray()){
+                JsonArray array = element.getAsJsonArray();
+                final int length = array.size();
+                for(int i = 0; i < length; i++){
+                    JsonElement arrayElement = array.get(i);
+                    if(arrayElement.isJsonObject()){
+                        JsonObject item = arrayElement.getAsJsonObject();
+                        if(item.has("@type")){
+                            if(checkIfRecipeType(item.get("@type"))){
+                                return buildFrontendPayload(item);
+                            }
+                        }
                     }
                 }
             }
+           
         }
         return null;
     }

@@ -7,8 +7,8 @@ import org.jsoup.nodes.Document;
     @CrossOrigin(origins = "*")
 public class RecipeController {
     @GetMapping ("/extract")
-    public String getRecipe(@RequestParam String url){
-        Document document = recipeExtractor.scrape(url);
+    public String getRecipe(@RequestParam("url") String url){
+        Document document= recipeExtractor.scrape(url);
         if(document != null){
             JsonObject data = recipeExtractor.extractRecipe(document);
             if (data != null) {
