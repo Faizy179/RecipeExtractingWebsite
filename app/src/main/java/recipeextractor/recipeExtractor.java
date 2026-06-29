@@ -20,50 +20,112 @@ public class recipeExtractor {
     final static int MAX_RETRIES = 3;
 
     public static Document scrape(String url){
-        String htmlContent;
-       ChromeOptions options = new ChromeOptions();
-       options.addArguments("--headless=new");
-       options.addArguments("--disable-blink-features=AutomationControlled");
-       options.addArguments("--no-sandbox");
-       options.addArguments("--disable-dev-shm-usage");
-       options.addArguments("--lang=en-US");
-       options.addArguments("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-          WebDriver driver = null;
-       try{
-        driver = new ChromeDriver(options);
-        driver.get(url);//navigqates to that specific recipe website
-        System.out.println("Page Title: " + driver.getTitle());
-        System.out.println("Page URL: " + driver.getCurrentUrl());
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-        try{
-            wait.until(d -> !d.findElements(By.cssSelector("script[type = 'application/ld+json']")).isEmpty());
-        }
-        catch(TimeoutException a){
-            System.out.println("No JSON-LD found after waiting");
-        }
         
-
-        htmlContent = driver.getPageSource();
-        int index = htmlContent.indexOf("recipeIngredient");
-
-        if (index != -1) {
-            int start = Math.max(0, index - 500);
-            int end = Math.min(htmlContent.length(), index + 1500);
-            System.out.println(htmlContent.substring(start, end));
+        // ==========================================
+        // TRY 1: The "Dumb" Fast Scrape (Jsoup)
+        // ==========================================
+        try {
+            System.out.println("Attempting fast Jsoup scrape...");
+            Document doc = Jsoup.connect(url)
+                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .timeout(5000) // NEW: Give up after 5 seconds so the frontend doesn't timeout!
+                .ignoreHttpErrors(true) // NEW: Don't crash on Cloudflare 403/503 errors!
+                .get();
+            
+            // If we bypassed the firewall, return the document immediately!
+            if (!doc.title().contains("Just a moment") && !doc.title().contains("Attention Required") && !doc.title().contains("Security")) {
+                
+                // NEW: Check if the raw HTML actually contains the JSON-LD or Microdata!
+                if (!doc.select("script[type='application/ld+json'], [itemtype*='schema.org/Recipe']").isEmpty()) {
+                    System.out.println("Jsoup scrape successful AND found recipe data!");
+                    return doc;
+                } else {
+                    System.out.println("Jsoup bypassed the firewall, but the page requires JavaScript to load the recipe. Falling back to Selenium...");
+                }
+            }
+            System.out.println("Jsoup hit a firewall. Falling back to Selenium...");
+        } catch (Exception e) {
+            System.out.println("Jsoup fast-scrape failed. Falling back to Selenium...");
         }
-        return Jsoup.parse(htmlContent);
 
-       }
-       catch(Exception e){
-        System.out.println("Scraping failed");
-        e.printStackTrace();
-        return null;
-       } 
-       finally{
-        if(driver != null){
-            driver.quit();
+        // ==========================================
+        // TRY 2: The Stealth Headless Scrape (Selenium)
+        // ==========================================
+        String htmlContent;
+        ChromeOptions options = new ChromeOptions();
+        
+        // 1. MUST be headless so your Nest server doesn't crash!
+        options.addArguments("--headless=new"); 
+        
+        // 2. The Disguise: Make the invisible browser look like a real monitor
+        options.addArguments("--window-size=1920,1080"); 
+        options.addArguments("--start-maximized");
+        
+        // 3. Standard anti-bot and stability flags
+        options.addArguments("--disable-blink-features=AutomationControlled");
+        options.addArguments("--no-sandbox");
+        options.addArguments("--disable-dev-shm-usage");
+        options.addArguments("--lang=en-US");
+        options.addArguments("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        
+       WebDriver driver = null;
+        try{
+            driver = new ChromeDriver(options);
+            
+            // 1. The Stealth Command (Wipe the Bot Flag)
+            ((ChromeDriver) driver).executeCdpCommand("Page.addScriptToEvaluateOnNewDocument",
+                java.util.Map.of("source", "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"));
+
+            // ==========================================
+            // 🌟 NEW: THE GEO-SPOOFING COMMANDS
+            // ==========================================
+            
+            // Enable Network modifications
+            ((ChromeDriver) driver).executeCdpCommand("Network.enable", new java.util.HashMap<>());
+            
+            // Inject a US IP Address into the HTTP Headers to bypass the UK Redirect
+            java.util.Map<String, Object> headers = new java.util.HashMap<>();
+            headers.put("X-Forwarded-For", "8.8.8.8"); // A US-based IP
+            headers.put("Accept-Language", "en-US,en;q=0.9");
+            
+            java.util.Map<String, Object> networkParams = new java.util.HashMap<>();
+            networkParams.put("headers", headers);
+            ((ChromeDriver) driver).executeCdpCommand("Network.setExtraHTTPHeaders", networkParams);
+            
+            // Override the Browser's GPS Coordinates to New York City
+            java.util.Map<String, Object> geoParams = new java.util.HashMap<>();
+            geoParams.put("latitude", 40.7128);
+            geoParams.put("longitude", -74.0060);
+            geoParams.put("accuracy", 100);
+            ((ChromeDriver) driver).executeCdpCommand("Emulation.setGeolocationOverride", geoParams);
+            
+            // ==========================================
+
+            // NOW we navigate to the URL, disguised as a New Yorker!
+            driver.get(url);
+            
+            System.out.println("Final Landing URL: " + driver.getCurrentUrl()); // <-- Let's print this to verify!
+            
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            try{
+                wait.until(d -> !d.findElements(By.cssSelector("script[type='application/ld+json'], [itemtype*='schema.org/Recipe']")).isEmpty());
+            } catch(TimeoutException a) {
+                System.out.println("No JSON-LD or Microdata found after waiting");
+            }
+
+            htmlContent = driver.getPageSource();
+            return Jsoup.parse(htmlContent);
+
+        } catch(Exception e) {
+            System.out.println("Selenium Scraping failed");
+            e.printStackTrace();
+            return null;
+        } finally {
+            if(driver != null) {
+                driver.quit(); // Crucial to prevent RAM exhaustion on the Nest server!
+            }
         }
-       }
     }   
     public static JsonObject extractRecipe(Document document){
 
@@ -100,25 +162,63 @@ public class recipeExtractor {
         return extractMicrodata(document);
     }
     public static JsonObject extractMicrodata(Document document){
-        Element recipeElement = document.selectFirst("[itemtype=http://schema.org/Recipe]");
+        Element recipeElement = document.selectFirst("[itemtype*=http://schema.org/Recipe]");
         JsonObject data = new JsonObject();
         JsonArray ingredients = new JsonArray();
         JsonArray instructions = new JsonArray();
+        String listSelectors = "[itemprop=recipeInstructions] li, [itemprop=recipeInstruction] li, [itemprop=instructions] li";
+        String containerSelectors = "[itemprop=recipeInstructions], [itemprop=recipeInstruction], [itemprop=instructions]";
         if(recipeElement == null){
+            System.out.println("Recipe was returned as null");
             return null;
         }
+        System.out.println("Recipe was not returned as null");
         Element nameElement = recipeElement.selectFirst("[itemprop=name]");
        
         Elements ingredientElements = recipeElement.select("[itemprop=recipeIngredient], [itemprop=ingredients]");
         for (Element element : ingredientElements){
             ingredients.add(element.text());
         }
-        Elements instructionElements = recipeElement.select("[itemprop=recipeInstructions] li, [itemprop=recipeInstruction] li");
+        Elements instructionElements = recipeElement.select(listSelectors);
         if(instructionElements.isEmpty()){
-            instructionElements = recipeElement.select("[itemprop=recipeInstructions], [itemprop=recipeInstruction]");
+            instructionElements = recipeElement.select(containerSelectors);
         }
+        
         for(Element element : instructionElements){
             instructions.add(element.text());
+        }
+
+        if (instructions.isEmpty()) {
+            
+            Elements allElements = recipeElement.select("h2, h3, h4, p, li");
+            
+            if (allElements.isEmpty()) {
+                allElements = document.select("h2, h3, h4, p, li"); 
+            }
+            
+            boolean inInstructions = false;
+            
+            for (Element el : allElements) {
+                String tagName = el.tagName();
+                String text = el.text().toLowerCase();
+                
+                if (tagName.matches("h2|h3|h4") && (text.contains("instructions") || text.contains("directions") || text.contains("method"))) {
+                    inInstructions = true;
+                    continue; 
+                }
+                
+                if (inInstructions) {
+                    if (tagName.matches("h2|h3|h4")) {
+                        break;
+                    }
+                    
+                    if ((tagName.equals("p") || tagName.equals("li")) && !el.text().trim().isEmpty()) {
+                        if(!el.hasAttr("itemprop")) { 
+                            instructions.add(el.text());
+                        }
+                    }
+                }
+            }
         }
         if(nameElement == null){
             data.addProperty("name",document.title());
@@ -128,6 +228,13 @@ public class recipeExtractor {
         }
         data.add("ingredients",ingredients);
         data.add("instructions",instructions);
+        System.out.println(document.title());
+        for(JsonElement element : ingredients){
+            System.out.println(element.getAsString());
+        }
+        for(JsonElement element : instructions){
+            System.out.println(element.getAsString());
+        }
         return data;
     }
     public static JsonArray extractIngredients(JsonObject recipe){
