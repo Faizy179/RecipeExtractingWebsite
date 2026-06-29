@@ -100,20 +100,32 @@ public class recipeExtractor {
         return extractMicrodata(document);
     }
     public static JsonObject extractMicrodata(Document document){
+        Element recipeElement = document.selectFirst("[itemtype=http://schema.org/Recipe]");
         JsonObject data = new JsonObject();
-        String recipeName = document.title();
         JsonArray ingredients = new JsonArray();
         JsonArray instructions = new JsonArray();
-        for (Element ingredient : document.select("[itemprop=recipeIngredient]")){
-            ingredients.add(ingredient.text());
-        }
-        if(ingredients.isEmpty()){
+        if(recipeElement == null){
             return null;
         }
-        for(Element instruction : document.select("[itemprop=recipeInstructions]")){
-            instructions.add(instruction.text());
+        Element nameElement = recipeElement.selectFirst("[itemprop=name]");
+       
+        Elements ingredientElements = recipeElement.select("[itemprop=recipeIngredient], [itemprop=ingredients]");
+        for (Element element : ingredientElements){
+            ingredients.add(element.text());
         }
-        data.addProperty("name", recipeName);
+        Elements instructionElements = recipeElement.select("[itemprop=recipeInstructions] li, [itemprop=recipeInstruction] li");
+        if(instructionElements.isEmpty()){
+            instructionElements = recipeElement.select("[itemprop=recipeInstructions], [itemprop=recipeInstruction]");
+        }
+        for(Element element : instructionElements){
+            instructions.add(element.text());
+        }
+        if(nameElement == null){
+            data.addProperty("name",document.title());
+        }
+        else{
+            data.addProperty("name",nameElement.text());
+        }
         data.add("ingredients",ingredients);
         data.add("instructions",instructions);
         return data;
