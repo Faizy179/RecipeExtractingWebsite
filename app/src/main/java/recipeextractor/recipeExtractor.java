@@ -6,6 +6,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
@@ -20,112 +21,61 @@ public class recipeExtractor {
     final static int MAX_RETRIES = 3;
 
     public static Document scrape(String url){
-        
-        // ==========================================
-        // TRY 1: The "Dumb" Fast Scrape (Jsoup)
-        // ==========================================
-        try {
-            System.out.println("Attempting fast Jsoup scrape...");
-            Document doc = Jsoup.connect(url)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                .header("Accept-Language", "en-US,en;q=0.9")
-                .timeout(5000) // NEW: Give up after 5 seconds so the frontend doesn't timeout!
-                .ignoreHttpErrors(true) // NEW: Don't crash on Cloudflare 403/503 errors!
-                .get();
-            
-            // If we bypassed the firewall, return the document immediately!
-            if (!doc.title().contains("Just a moment") && !doc.title().contains("Attention Required") && !doc.title().contains("Security")) {
-                
-                // NEW: Check if the raw HTML actually contains the JSON-LD or Microdata!
-                if (!doc.select("script[type='application/ld+json'], [itemtype*='schema.org/Recipe']").isEmpty()) {
-                    System.out.println("Jsoup scrape successful AND found recipe data!");
-                    return doc;
-                } else {
-                    System.out.println("Jsoup bypassed the firewall, but the page requires JavaScript to load the recipe. Falling back to Selenium...");
-                }
-            }
-            System.out.println("Jsoup hit a firewall. Falling back to Selenium...");
-        } catch (Exception e) {
-            System.out.println("Jsoup fast-scrape failed. Falling back to Selenium...");
-        }
-
-        // ==========================================
-        // TRY 2: The Stealth Headless Scrape (Selenium)
-        // ==========================================
         String htmlContent;
-        ChromeOptions options = new ChromeOptions();
-        
-        // 1. MUST be headless so your Nest server doesn't crash!
-        options.addArguments("--headless=new"); 
-        
-        // 2. The Disguise: Make the invisible browser look like a real monitor
-        options.addArguments("--window-size=1920,1080"); 
-        options.addArguments("--start-maximized");
-        
-        // 3. Standard anti-bot and stability flags
-        options.addArguments("--disable-blink-features=AutomationControlled");
-        options.addArguments("--no-sandbox");
-        options.addArguments("--disable-dev-shm-usage");
-        options.addArguments("--lang=en-US");
-        options.addArguments("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-        
+       ChromeOptions options = new ChromeOptions();
+       options.addArguments("--disable-blink-features=AutomationControlled");
+       options.addArguments("--no-sandbox");
+       options.addArguments("--disable-dev-shm-usage");
+       options.addArguments("--lang=en-US");
+       options.addArguments("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+       options.addArguments("--headless=new");   
+       options.addArguments("--window-size=1920,1080");
+       options.addArguments("--start-maximized");
        WebDriver driver = null;
+       try{
+        driver = new ChromeDriver(options);
+        ((ChromeDriver) driver).executeCdpCommand("Page.addScriptToEvaluateOnNewDocument",
+            java.util.Map.of("source", "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"));
+
+        ((JavascriptExecutor) driver).executeScript(
+    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+);
+        driver.get(url);//navigqates to that specific recipe website
+        System.out.println("Page Inital Title: " + driver.getTitle());
+        System.out.println("Page URL: " + driver.getCurrentUrl());
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
         try{
-            driver = new ChromeDriver(options);
-            
-            // 1. The Stealth Command (Wipe the Bot Flag)
-            ((ChromeDriver) driver).executeCdpCommand("Page.addScriptToEvaluateOnNewDocument",
-                java.util.Map.of("source", "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"));
-
-            // ==========================================
-            // 🌟 NEW: THE GEO-SPOOFING COMMANDS
-            // ==========================================
-            
-            // Enable Network modifications
-            ((ChromeDriver) driver).executeCdpCommand("Network.enable", new java.util.HashMap<>());
-            
-            // Inject a US IP Address into the HTTP Headers to bypass the UK Redirect
-            java.util.Map<String, Object> headers = new java.util.HashMap<>();
-            headers.put("X-Forwarded-For", "8.8.8.8"); // A US-based IP
-            headers.put("Accept-Language", "en-US,en;q=0.9");
-            
-            java.util.Map<String, Object> networkParams = new java.util.HashMap<>();
-            networkParams.put("headers", headers);
-            ((ChromeDriver) driver).executeCdpCommand("Network.setExtraHTTPHeaders", networkParams);
-            
-            // Override the Browser's GPS Coordinates to New York City
-            java.util.Map<String, Object> geoParams = new java.util.HashMap<>();
-            geoParams.put("latitude", 40.7128);
-            geoParams.put("longitude", -74.0060);
-            geoParams.put("accuracy", 100);
-            ((ChromeDriver) driver).executeCdpCommand("Emulation.setGeolocationOverride", geoParams);
-            
-            // ==========================================
-
-            // NOW we navigate to the URL, disguised as a New Yorker!
-            driver.get(url);
-            
-            System.out.println("Final Landing URL: " + driver.getCurrentUrl()); // <-- Let's print this to verify!
-            
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-            try{
-                wait.until(d -> !d.findElements(By.cssSelector("script[type='application/ld+json'], [itemtype*='schema.org/Recipe']")).isEmpty());
-            } catch(TimeoutException a) {
-                System.out.println("No JSON-LD or Microdata found after waiting");
-            }
-
-            htmlContent = driver.getPageSource();
-            return Jsoup.parse(htmlContent);
-
-        } catch(Exception e) {
-            System.out.println("Selenium Scraping failed");
-            e.printStackTrace();
-            return null;
-        } finally {
-            if(driver != null) {
-                driver.quit(); // Crucial to prevent RAM exhaustion on the Nest server!
-            }
+            wait.until(d -> !d.findElements(By.cssSelector("script[type='application/ld+json'], [itemtype*='schema.org/Recipe']")).isEmpty());
         }
+        catch(TimeoutException a){
+            System.out.println("No JSON-LD found after waiting");
+        }
+        wait = new WebDriverWait(driver, Duration.ofSeconds(30));
+
+        System.out.println("Page Title After Waiting: " + driver.getTitle());
+
+        htmlContent = driver.getPageSource();
+       
+        int index = htmlContent.indexOf("recipeIngredient");
+
+        if (index != -1) {
+            int start = Math.max(0, index - 500);
+            int end = Math.min(htmlContent.length(), index + 1500);
+            System.out.println(htmlContent.substring(start, end));
+        }
+        return Jsoup.parse(htmlContent);
+
+       }
+       catch(Exception e){
+        System.out.println("Scraping failed");
+        e.printStackTrace();
+        return null;
+       } 
+       finally{
+        if(driver != null){
+            driver.quit();
+        }
+       }
     }   
     public static JsonObject extractRecipe(Document document){
 
